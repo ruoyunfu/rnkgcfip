@@ -3,7 +3,7 @@ interface Env {
     APITOKEN?: string;
 }
 
-// Cloudflare colo 代码到地区名称的映射表 (复制自 src/utils/colo.ts 以便后端独立运行)
+// Cloudflare colo 代码到地区名称的映射表 (复制自 src/utils/colo.ts，修改时请同步更新前端)
 const coloMap: { [key: string]: string } = {
     'SJC': '🇺🇸 圣何塞', 'LAX': '🇺🇸 洛杉矶', 'SEA': '🇺🇸 西雅图', 'SFO': '🇺🇸 旧金山', 'DFW': '🇺🇸 达拉斯',
     'ORD': '🇺🇸 芝加哥', 'IAD': '🇺🇸 华盛顿', 'ATL': '🇺🇸 亚特兰大', 'MIA': '🇺🇸 迈阿密', 'DEN': '🇺🇸 丹佛',

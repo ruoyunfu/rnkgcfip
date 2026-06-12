@@ -26,6 +26,15 @@ function App() {
     if (savedTheme) setTheme(savedTheme);
   }, []);
 
+  // 监听 authedFetch 派发的全局 401 事件：JWT_SECRET 失效时自动退出登录并回到登录页
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      handleLogout();
+    };
+    window.addEventListener('auth:expired', handleAuthExpired);
+    return () => window.removeEventListener('auth:expired', handleAuthExpired);
+  }, []);
+
   useEffect(() => {
     const link = document.querySelector("link[rel*='icon']") || document.createElement('link');
     (link as HTMLLinkElement).type = 'image/svg+xml';

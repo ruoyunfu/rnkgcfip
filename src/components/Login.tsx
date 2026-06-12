@@ -8,7 +8,14 @@ interface LoginProps {
 
 export function Login({ onLogin }: LoginProps) {
     const [password, setPassword] = useState('');
-    const [error, setError] = useState('');
+    const [error, setError] = useState(() => {
+        // 若由 401 自愈跳转过来，给用户一个明确的说明
+        if (sessionStorage.getItem('auth_expired') === 'true') {
+            sessionStorage.removeItem('auth_expired');
+            return '登录信息已失效，请重新登录';
+        }
+        return '';
+    });
     const [loading, setLoading] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -63,6 +70,7 @@ export function Login({ onLogin }: LoginProps) {
                                 id="password"
                                 type="password"
                                 value={password}
+                                autoComplete="current-password"
                                 onChange={(e) => setPassword(e.target.value)}
                                 className="appearance-none border border-gray-300 dark:border-gray-600 rounded-lg w-full py-3 px-4 text-gray-700 dark:text-white bg-transparent focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all placeholder:text-gray-400 dark:placeholder:text-gray-500"
                                 placeholder="请输入密码"
@@ -93,12 +101,12 @@ export function Login({ onLogin }: LoginProps) {
                 <div className="w-full">
                     <h2 className="text-2xl font-bold mb-10 text-center text-gray-800 dark:text-gray-200 tracking-wider">特色功能</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-                        <div className="flex items-start gap-4 p-4 rounded-xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm ring-1 ring-black/5 shadow-lg"><Layers className="w-7 h-7 text-blue-500 shrink-0 mt-1" /><div><h3 className="font-bold text-gray-800 dark:text-gray-100">多源IP获取</h3><p className="text-sm text-gray-600 dark:text-gray-400">聚合官方、社区及自定义第三方IP源，构建专属的IP资源池。</p></div></div>
-                        <div className="flex items-start gap-4 p-4 rounded-xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm ring-1 ring-black/5 shadow-lg"><Zap className="w-7 h-7 text-yellow-500 shrink-0 mt-1" /><div><h3 className="font-bold text-gray-800 dark:text-gray-100">高并发测速</h3><p className="text-sm text-gray-600 dark:text-gray-400">利用多线程并发测试IP延迟，快速从海量IP中筛选出可用节点。</p></div></div>
-                        <div className="flex items-start gap-4 p-4 rounded-xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm ring-1 ring-black/5 shadow-lg"><Filter className="w-7 h-7 text-green-500 shrink-0 mt-1" /><div><h3 className="font-bold text-gray-800 dark:text-gray-100">灵活筛选</h3><p className="text-sm text-gray-600 dark:text-gray-400">支持按延迟、地区、数量等多维度筛选测速结果，精确定位所需IP。</p></div></div>
-                        <div className="flex items-start gap-4 p-4 rounded-xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm ring-1 ring-black/5 shadow-lg"><Box className="w-7 h-7 text-teal-500 shrink-0 mt-1" /><div><h3 className="font-bold text-gray-800 dark:text-gray-100">场景分组</h3><p className="text-sm text-gray-600 dark:text-gray-400">将优选IP按不同网络环境（如家庭、公司）保存为场景，方便快速切换使用。</p></div></div>
-                        <div className="flex items-start gap-4 p-4 rounded-xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm ring-1 ring-black/5 shadow-lg"><ClipboardCopy className="w-7 h-7 text-purple-500 shrink-0 mt-1" /><div><h3 className="font-bold text-gray-800 dark:text-gray-100">一键导出/复制</h3><p className="text-sm text-gray-600 dark:text-gray-400">支持将筛选结果导出为CSV、TXT等格式，或直接复制到剪贴板，兼容多种客户端。</p></div></div>
-                        <div className="flex items-start gap-4 p-4 rounded-xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm ring-1 ring-black/5 shadow-lg"><Server className="w-7 h-7 text-indigo-500 shrink-0 mt-1" /><div><h3 className="font-bold text-gray-800 dark:text-gray-100">私有API</h3><p className="text-sm text-gray-600 dark:text-gray-400">为每个场景生成专属API订阅链接，支持参数筛选，轻松集成到其他应用。</p></div></div>
+                        <div className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm ring-1 ring-black/5 shadow-lg h-full"><Layers className="w-7 h-7 text-blue-500 shrink-0" /><div className="text-center"><h3 className="font-bold text-gray-800 dark:text-gray-100">多源IP获取</h3><p className="text-sm text-gray-600 dark:text-gray-400">聚合官方、社区及自定义第三方IP源，构建专属的IP资源池。</p></div></div>
+                        <div className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm ring-1 ring-black/5 shadow-lg h-full"><Zap className="w-7 h-7 text-yellow-500 shrink-0" /><div className="text-center"><h3 className="font-bold text-gray-800 dark:text-gray-100">高并发测速</h3><p className="text-sm text-gray-600 dark:text-gray-400">利用多线程并发测试IP延迟，快速从海量IP中筛选出可用节点。</p></div></div>
+                        <div className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm ring-1 ring-black/5 shadow-lg h-full"><Filter className="w-7 h-7 text-green-500 shrink-0" /><div className="text-center"><h3 className="font-bold text-gray-800 dark:text-gray-100">灵活筛选</h3><p className="text-sm text-gray-600 dark:text-gray-400">支持按延迟、地区、数量等多维度筛选测速结果，精确定位所需IP。</p></div></div>
+                        <div className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm ring-1 ring-black/5 shadow-lg h-full"><Box className="w-7 h-7 text-teal-500 shrink-0" /><div className="text-center"><h3 className="font-bold text-gray-800 dark:text-gray-100">场景分组</h3><p className="text-sm text-gray-600 dark:text-gray-400">将优选IP按不同网络环境（如家庭、公司）保存为场景，方便快速切换使用。</p></div></div>
+                        <div className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm ring-1 ring-black/5 shadow-lg h-full"><ClipboardCopy className="w-7 h-7 text-purple-500 shrink-0" /><div className="text-center"><h3 className="font-bold text-gray-800 dark:text-gray-100">一键导出/复制</h3><p className="text-sm text-gray-600 dark:text-gray-400">支持将筛选结果导出为CSV、TXT等格式，或直接复制到剪贴板，兼容多种客户端。</p></div></div>
+                        <div className="flex flex-col items-center justify-center gap-3 p-6 rounded-xl bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm ring-1 ring-black/5 shadow-lg h-full"><Server className="w-7 h-7 text-indigo-500 shrink-0" /><div className="text-center"><h3 className="font-bold text-gray-800 dark:text-gray-100">私有API</h3><p className="text-sm text-gray-600 dark:text-gray-400">为每个场景生成专属API订阅链接，支持参数筛选，轻松集成到其他应用。</p></div></div>
                     </div>
                 </div>
             </main>

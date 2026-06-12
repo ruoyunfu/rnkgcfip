@@ -9,7 +9,6 @@ import {
 import { useToast } from './Toast';
 import { Gauge, Play, StopCircle, Loader2 } from 'lucide-react';
 import { useConfirm } from './ConfirmDialog';
-import { NumberInput } from './NumberInput';
 
 interface IpScannerConfigAndControlProps {
     cfIps: CloudflareIps | null;
@@ -18,10 +17,13 @@ interface IpScannerConfigAndControlProps {
 
 const PORTS_TO_TEST = [80, 443, 8080, 8880, 2052, 2053, 2082, 2083, 2086, 2087, 2095, 2096, 8443];
 
-function ScannerConfig({ cfIps, onScanComplete }: IpScannerConfigAndControlProps) {
-    const [count, setCount] = useState(500);
-    const [threads, setThreads] = useState(32);
-    const [latencyLimit, setLatencyLimit] = useState(2000);
+export function ScannerConfig({ cfIps, onScanComplete }: IpScannerConfigAndControlProps) {
+    const [count, setCount] = useState<string>('500');
+    const [threads, setThreads] = useState<string>('32');
+    const [latencyLimit, setLatencyLimit] = useState<string>('2000');
+    const [countError, setCountError] = useState<string>('');
+    const [threadsError, setThreadsError] = useState<string>('');
+    const [latencyLimitError, setLatencyLimitError] = useState<string>('');
     const [selectedPort, setSelectedPort] = useState(443);
     const [ipSource, setIpSource] = useState<'cf' | 'cm' | 'third'>('cf');
     const [isScanning, setIsScanning] = useState(false);
@@ -36,6 +38,7 @@ function ScannerConfig({ cfIps, onScanComplete }: IpScannerConfigAndControlProps
     const [isPreparing, setIsPreparing] = useState(false);
 
     const scannerRef = useRef<BatchScanner | null>(null);
+    const cancelPreparingRef = useRef(false);
     const { showToast } = useToast();
     const { confirm } = useConfirm();
 
@@ -49,73 +52,114 @@ function ScannerConfig({ cfIps, onScanComplete }: IpScannerConfigAndControlProps
         return result;
     };
 
+    const validateInputs = (): { countNum: number; threadsNum: number; latencyLimitNum: number } | null => {
+        const countTrim = count.trim();
+        const threadsTrim = threads.trim();
+        const latencyLimitTrim = latencyLimit.trim();
+        let hasError = false;
+        if (ipSource !== 'third' && !/^\d+$/.test(countTrim)) {
+            setCountError('请输入有效的正整数');
+            hasError = true;
+        } else {
+            setCountError('');
+        }
+        if (!/^\d+$/.test(threadsTrim) || parseInt(threadsTrim, 10) < 1) {
+            setThreadsError('请输入大于等于1的整数');
+            hasError = true;
+        } else {
+            setThreadsError('');
+        }
+        if (!/^\d+$/.test(latencyLimitTrim)) {
+            setLatencyLimitError('请输入有效的正整数');
+            hasError = true;
+        } else {
+            setLatencyLimitError('');
+        }
+        if (hasError) return null;
 
+        return {
+            countNum: parseInt(countTrim, 10),
+            threadsNum: parseInt(threadsTrim, 10),
+            latencyLimitNum: parseInt(latencyLimitTrim, 10),
+        };
+    };
 
+    const checkGeoLocation = async (): Promise<boolean> => {
+        let isCN = true;
+        try {
+            const response = await fetch('https://api.ip.sb/geoip');
+            const data = await response.json() as { country_code: string };
+            isCN = data.country_code === 'CN';
+        } catch (error) {
+            console.error('Failed to determine location:', error);
+            isCN = false;
+        }
+        if (!isCN) {
+            return showLocationWarning();
+        }
+        return true;
+    };
+
+    const prepareTargets = async (countNum: number): Promise<string[] | null> => {
+        setSourceStats([]);
+        setUniqueIpCount(0);
+        setGrossIpCount(0);
+
+        if (cancelPreparingRef.current) return null;
+
+        if (ipSource === 'third') {
+            const data = await getThirdPartyIps();
+            if (cancelPreparingRef.current) return null;
+            if (!data || !data.ips || data.ips.length === 0) {
+                showToast('未能获取到第三方源IP，请检查配置或后台日志', 'warning');
+                return null;
+            }
+            setSourceStats(data.sources);
+            setUniqueIpCount(data.total);
+            setGrossIpCount(data.sources.reduce((acc, s) => acc + s.count, 0));
+            return data.ips;
+        }
+
+        const cidrsToUse = ipSource === 'cf'
+            ? (cfIps?.ipv4_cidrs?.length ? cfIps.ipv4_cidrs : (CF_CIDR_LIST || []))
+            : (cfIps?.cm_cidrs?.length ? cfIps.cm_cidrs : (CF_CIDR_LIST || []));
+
+        if (!cidrsToUse || cidrsToUse.length === 0) {
+            showToast('未找到Cloudflare IP段数据，请先点击上方的"同步IP段"按钮进行同步。', 'error');
+            return null;
+        }
+        return generateRandomIps(cidrsToUse, countNum);
+    };
 
     const handleScan = async () => {
+        cancelPreparingRef.current = false;
+
+        const val = validateInputs();
+        if (!val) return;
+
         setIsPreparing(true);
         try {
-            // 每次点击测试时，先检测地理位置
-            let isCN = true;
-            try {
-                const response = await fetch('https://api.ip.sb/geoip');
-                const data = await response.json() as { country_code: string };
-                isCN = data.country_code === 'CN';
-            } catch (error) {
-                console.error('Failed to determine location:', error);
-                isCN = false; // 报错则默认提示警告
+            // Step 1: 地理定位检测
+            const shouldContinue = await checkGeoLocation();
+            if (!shouldContinue || cancelPreparingRef.current) {
+                setIsPreparing(false);
+                return;
             }
 
-            if (!isCN) {
-                const continueScan = await showLocationWarning();
-                if (!continueScan) {
-                    setIsPreparing(false);
-                    return;
-                }
+            // Step 2: 准备靶标 IP
+            const targets = await prepareTargets(val.countNum);
+            if (!targets || targets.length === 0 || cancelPreparingRef.current) {
+                setIsPreparing(false);
+                return;
             }
 
-            let targets: string[] = [];
-            setSourceStats([]); // 重置统计
-            setUniqueIpCount(0);
-            setGrossIpCount(0);
-            
-            if (ipSource === 'third') {
-                const data = await getThirdPartyIps();
-                if (!data || !data.ips || data.ips.length === 0) {
-                    setIsPreparing(false);
-                    showToast('未能获取到第三方源IP，请检查配置或后台日志', 'warning');
-                    return;
-                }
-                targets = data.ips;
-                setSourceStats(data.sources);
-                setUniqueIpCount(data.total);
-                setGrossIpCount(data.sources.reduce((acc, s) => acc + s.count, 0));
-            } else {
-                let cidrsToUse: string[] = [];
-                if (ipSource === 'cf')
-                    cidrsToUse = (cfIps?.ipv4_cidrs && cfIps.ipv4_cidrs.length > 0) ? cfIps.ipv4_cidrs : (CF_CIDR_LIST || []);
-                else
-                    cidrsToUse = (cfIps?.cm_cidrs && cfIps.cm_cidrs.length > 0) ? cfIps.cm_cidrs : (CF_CIDR_LIST || []);
-
-                if (!cidrsToUse || cidrsToUse.length === 0) {
-                    showToast('未找到Cloudflare IP段数据，请先点击上方的“同步IP段”按钮进行同步。', 'error');
-                    setIsPreparing(false);
-                    return;
-                }
-                targets = generateRandomIps(cidrsToUse, count);
-            }
+            // Step 3: 初始化扫描状态
             setProgress(0);
             setSuccessCount(0);
             setFailCount(0);
+            setTotal(targets.length);
             await new Promise(resolve => setTimeout(resolve, 0));
 
-            setTotal(targets.length);
-            if (targets.length === 0) {
-                setIsPreparing(false);
-                showToast('未能生成测试IP，请检查设置', 'error');
-                return;
-            }
-            
             const currentResults: ScanResult[] = [];
             const onProgress = (result: ScanResult) => {
                 setProgress(p => p + 1);
@@ -136,13 +180,20 @@ function ScannerConfig({ cfIps, onScanComplete }: IpScannerConfigAndControlProps
                 onScanComplete(finalResults);
             };
 
-            // 准备工作完成，开始扫描
+            // Step 4: 启动扫描
             setIsPreparing(false);
             setIsScanning(true);
-            const scanner = new BatchScanner(targets, ipSource === 'third' ? 0 : selectedPort, threads, latencyLimit, onProgress, onComplete);
+            const scanner = new BatchScanner(
+                targets,
+                ipSource === 'third' ? 0 : selectedPort,
+                val.threadsNum,
+                val.latencyLimitNum,
+                onProgress,
+                onComplete,
+            );
             scannerRef.current = scanner;
 
-            scanner.run();
+            await scanner.run();
         } catch (error) {
             console.error('Scan failed:', error);
             setIsScanning(false);
@@ -207,7 +258,15 @@ function ScannerConfig({ cfIps, onScanComplete }: IpScannerConfigAndControlProps
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                 <div>
                     <label htmlFor="ip-count" className="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-1">随机IP数量:</label>
-                    <NumberInput id="ip-count" value={count} onChange={(n) => setCount(n || 0)} className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 dark:text-white dark:bg-gray-700 dark:border-gray-600 leading-tight focus:outline-none focus:shadow-outline disabled:opacity-50" disabled={isScanning || isPreparing || ipSource === 'third'} />
+                    <input
+                        id="ip-count"
+                        type="text"
+                        value={count}
+                        onChange={(e) => { setCount(e.target.value); if (countError) setCountError(''); }}
+                        className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 dark:text-white dark:bg-gray-700 dark:border-gray-600 leading-tight focus:outline-none focus:shadow-outline disabled:opacity-50"
+                        disabled={isScanning || isPreparing || ipSource === 'third'}
+                    />
+                    {countError && <p className="text-red-500 text-xs mt-1">{countError}</p>}
                 </div>
                 <div>
                     <label htmlFor="port-select" className="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-1">端口:</label>
@@ -219,11 +278,27 @@ function ScannerConfig({ cfIps, onScanComplete }: IpScannerConfigAndControlProps
                 </div>
                 <div>
                     <label htmlFor="threads-count" className="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-1">线程数:</label>
-                    <NumberInput id="threads-count" value={threads} onChange={(n) => setThreads(n || 1)} min={1} className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 dark:text-white dark:bg-gray-700 dark:border-gray-600 leading-tight focus:outline-none focus:shadow-outline disabled:opacity-50" disabled={isScanning || isPreparing} />
+                    <input
+                        id="threads-count"
+                        type="text"
+                        value={threads}
+                        onChange={(e) => { setThreads(e.target.value); if (threadsError) setThreadsError(''); }}
+                        className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 dark:text-white dark:bg-gray-700 dark:border-gray-600 leading-tight focus:outline-none focus:shadow-outline disabled:opacity-50"
+                        disabled={isScanning || isPreparing}
+                    />
+                    {threadsError && <p className="text-red-500 text-xs mt-1">{threadsError}</p>}
                 </div>
                 <div>
                     <label htmlFor="latency-limit" className="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-1">延迟限制(ms):</label>
-                    <NumberInput id="latency-limit" value={latencyLimit} onChange={(n) => setLatencyLimit(n || 2000)} className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 dark:text-white dark:bg-gray-700 dark:border-gray-600 leading-tight focus:outline-none focus:shadow-outline disabled:opacity-50" disabled={isScanning || isPreparing} />
+                    <input
+                        id="latency-limit"
+                        type="text"
+                        value={latencyLimit}
+                        onChange={(e) => { setLatencyLimit(e.target.value); if (latencyLimitError) setLatencyLimitError(''); }}
+                        className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 dark:text-white dark:bg-gray-700 dark:border-gray-600 leading-tight focus:outline-none focus:shadow-outline disabled:opacity-50"
+                        disabled={isScanning || isPreparing}
+                    />
+                    {latencyLimitError && <p className="text-red-500 text-xs mt-1">{latencyLimitError}</p>}
                 </div>
 
             </div>
@@ -232,6 +307,13 @@ function ScannerConfig({ cfIps, onScanComplete }: IpScannerConfigAndControlProps
                     {isPreparing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Play className="w-4 h-4 mr-2" />}
                     {isPreparing ? '准备中...' : isScanning ? `测试中... (${progress}/${total})` : '开始测试'}
                 </button>
+                {isPreparing && (
+                    <button onClick={() => { cancelPreparingRef.current = true; setIsPreparing(false); }} style={{ marginLeft: "8px" }}
+                            className="flex items-center bg-red-600 text-white font-bold py-2 px-4 rounded-md hover:bg-red-700 transition-colors">
+                        <StopCircle className="w-4 h-4 mr-2" />
+                        取消准备
+                    </button>
+                )}
                 {isScanning && (
                     <button onClick={handleStopScan} style={{ marginLeft: "8px" }} disabled={isStopping}
                             className="flex items-center bg-red-600 text-white font-bold py-2 px-4 rounded-md hover:bg-red-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed">
@@ -293,4 +375,3 @@ function ScannerConfig({ cfIps, onScanComplete }: IpScannerConfigAndControlProps
         </div >
     );
 }
-export { ScannerConfig };

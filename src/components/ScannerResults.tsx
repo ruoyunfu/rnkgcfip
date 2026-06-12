@@ -7,9 +7,7 @@ import {
 import { useToast } from './Toast';
 import { ListFilter, Save } from 'lucide-react';
 import { RegionDisplay } from './RegionDisplay';
-import { NumberInput } from './NumberInput';
 
-export { ScannerResults };
 interface IpScannerResultsAndSaveProps {
     scanResults: ScanResult[];
     onSaveSuccess?: () => void;
@@ -17,11 +15,13 @@ interface IpScannerResultsAndSaveProps {
 
 const DEFAULT_IPS_PER_REGION = 20;
 
-function ScannerResults({ scanResults, onSaveSuccess }: IpScannerResultsAndSaveProps) {
-    const [ipsPerRegion, setIpsPerRegion] = useState(DEFAULT_IPS_PER_REGION);
+export function ScannerResults({ scanResults, onSaveSuccess }: IpScannerResultsAndSaveProps) {
+    const [ipsPerRegion, setIpsPerRegion] = useState<string>(String(DEFAULT_IPS_PER_REGION));
+    const [ipsPerRegionError, setIpsPerRegionError] = useState<string>('');
     const [isLatencyFilterEnabled, setIsLatencyFilterEnabled] = useState(false);
     const [isRegionLimitEnabled, setIsRegionLimitEnabled] = useState(false);
-    const [latencyFilterValue, setLatencyFilterValue] = useState(300);
+    const [latencyFilterValue, setLatencyFilterValue] = useState<string>('300');
+    const [latencyFilterError, setLatencyFilterError] = useState<string>('');
     const [isSaving, setIsSaving] = useState(false);
     const [sceneName, setSceneName] = useState('');
     const [saveMode, setSaveMode] = useState<'overwrite' | 'append'>('overwrite');
@@ -29,7 +29,18 @@ function ScannerResults({ scanResults, onSaveSuccess }: IpScannerResultsAndSaveP
 
     const uniqueRegions: string[] = Array.from(new Set(scanResults.map(r => r.colo))).filter((r): r is string => !!r).sort();
   
-    const baseFilteredResults = scanResults.filter(r => isLatencyFilterEnabled ? (r.latency > -1 && r.latency < latencyFilterValue) : true);
+    const latencyTrim = latencyFilterValue.trim();
+    const isLatencyFormatValid = /^\d+$/.test(latencyTrim);
+    const effectiveLatencyValue = isLatencyFormatValid ? parseInt(latencyTrim, 10) : 0;
+
+    const ipsPerRegionTrim = ipsPerRegion.trim();
+    const isIpsPerRegionFormatValid = /^\d+$/.test(ipsPerRegionTrim) && parseInt(ipsPerRegionTrim, 10) >= 1;
+    const effectiveIpsPerRegion = isIpsPerRegionFormatValid ? parseInt(ipsPerRegionTrim, 10) : DEFAULT_IPS_PER_REGION;
+
+    const baseFilteredResults = scanResults.filter(r => isLatencyFilterEnabled
+        ? (isLatencyFormatValid && r.latency > -1 && r.latency < effectiveLatencyValue)
+        : true
+    );
   
   const regionCounts = baseFilteredResults.reduce((acc, r) => {
         if (r.colo) {
@@ -46,7 +57,7 @@ function ScannerResults({ scanResults, onSaveSuccess }: IpScannerResultsAndSaveP
         limitedResults = filteredResults.filter(r => {
             const colo = r.colo || 'Unknown';
             regionCountsForLimit[colo] = (regionCountsForLimit[colo] || 0) + 1;
-            return regionCountsForLimit[colo] <= ipsPerRegion;
+            return regionCountsForLimit[colo] <= effectiveIpsPerRegion;
         });
     }
 
@@ -95,39 +106,58 @@ function ScannerResults({ scanResults, onSaveSuccess }: IpScannerResultsAndSaveP
                                         id="latency-filter-enable"
                                         type="checkbox"
                                         checked={isLatencyFilterEnabled}
-                                        onChange={(e) => setIsLatencyFilterEnabled(e.target.checked)}
+                                        onChange={(e) => {
+                                            if (e.target.checked && !isLatencyFormatValid) {
+                                                setLatencyFilterError('请输入有效的正整数');
+                                                return;
+                                            }
+                                            setLatencyFilterError('');
+                                            setIsLatencyFilterEnabled(e.target.checked);
+                                        }}
                                         className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
                                     />
                                     <label htmlFor="latency-filter-enable" className="text-sm text-gray-600 dark:text-gray-300 cursor-pointer select-none">延迟 &lt;</label>
                                 </div>                                
                                  <div className="flex items-center gap-2">
-                                    <NumberInput
+                                    <input
                                         id="latency-filter-value"
+                                        type="text"
                                         value={latencyFilterValue}
-                                        onChange={(n) => setLatencyFilterValue(n || 0)}
+                                        onChange={(e) => { setLatencyFilterValue(e.target.value); if (latencyFilterError) setLatencyFilterError(''); }}
                                         className="p-1 border rounded-md w-20 text-sm dark:bg-gray-600 dark:border-gray-500 dark:text-white disabled:bg-gray-200 dark:disabled:bg-gray-800"
                                         disabled={!isLatencyFilterEnabled}
                                     />
                                     <span className="text-sm text-gray-600 dark:text-gray-300">ms</span>
+                                    {latencyFilterError && <span className="text-red-500 text-xs">{latencyFilterError}</span>}
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <input
                                         id="region-limit-enable"
                                         type="checkbox"
                                         checked={isRegionLimitEnabled}
-                                        onChange={(e) => setIsRegionLimitEnabled(e.target.checked)}
+                                        onChange={(e) => {
+                                            if (e.target.checked && !isIpsPerRegionFormatValid) {
+                                                setIpsPerRegionError('请输入大于等于1的整数');
+                                                return;
+                                            }
+                                            setIpsPerRegionError('');
+                                            setIsRegionLimitEnabled(e.target.checked);
+                                        }}
                                         className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
                                     />
                                     <label htmlFor="region-limit-enable" className="text-sm text-gray-600 dark:text-gray-300 cursor-pointer select-none">地区IP &lt;=</label>
                                 </div>
-                                <NumberInput
-                                    id="ips-per-region"
-                                    value={ipsPerRegion}
-                                    onChange={(n) => setIpsPerRegion(n || DEFAULT_IPS_PER_REGION)}
-                                    min={1}
-                                    className="p-1 border rounded-md w-20 text-sm dark:bg-gray-600 dark:border-gray-500 dark:text-white disabled:bg-gray-200 dark:disabled:bg-gray-800"
-                                    disabled={!isRegionLimitEnabled}
-                                />
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        id="ips-per-region"
+                                        type="text"
+                                        value={ipsPerRegion}
+                                        onChange={(e) => { setIpsPerRegion(e.target.value); if (ipsPerRegionError) setIpsPerRegionError(''); }}
+                                        className="p-1 border rounded-md w-20 text-sm dark:bg-gray-600 dark:border-gray-500 dark:text-white disabled:bg-gray-200 dark:disabled:bg-gray-800"
+                                        disabled={!isRegionLimitEnabled}
+                                    />
+                                    {ipsPerRegionError && <span className="text-red-500 text-xs">{ipsPerRegionError}</span>}
+                                </div>
                             </div>
                         </div>
 
@@ -151,7 +181,7 @@ function ScannerResults({ scanResults, onSaveSuccess }: IpScannerResultsAndSaveP
                         <div className="flex flex-wrap gap-2">
                             {uniqueRegions.map(region => {
                                 const countForRegion = regionCounts[region] || 0;
-                                const displayCount = isRegionLimitEnabled ? Math.min(countForRegion, ipsPerRegion) : countForRegion;
+                                const displayCount = isRegionLimitEnabled ? Math.min(countForRegion, effectiveIpsPerRegion) : countForRegion;
                                 return (
                                     <label key={region} className="inline-flex items-center space-x-1 text-xs text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-600 px-2 py-1 rounded border border-gray-200 dark:border-gray-500 cursor-pointer select-none hover:bg-gray-50 dark:hover:bg-gray-500 transition-colors">
                                         <input

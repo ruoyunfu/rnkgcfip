@@ -1,4 +1,5 @@
 // Cloudflare colo 代码到地区名称的映射表
+// NOTE: 后端 functions/api/getips.ts 有一份同样的副本，修改时请同步更新
 export const coloMap: { [key: string]: string } = {
     'SJC': '🇺🇸 圣何塞', 'LAX': '🇺🇸 洛杉矶', 'SEA': '🇺🇸 西雅图', 'SFO': '🇺🇸 旧金山', 'DFW': '🇺🇸 达拉斯',
     'ORD': '🇺🇸 芝加哥', 'IAD': '🇺🇸 华盛顿', 'ATL': '🇺🇸 亚特兰大', 'MIA': '🇺🇸 迈阿密', 'DEN': '🇺🇸 丹佛',
@@ -66,7 +67,7 @@ export const getColoName = (colo: string): string => {
 
 /**
  * Cloudflare colo 代码到国家/地区代码 (ISO 3166-1 alpha-2 小写) 的映射
- * 用于在 Windows 系统下拼接国旗图片 URL (https://ipdata.co/flags/<code>.png)
+ * 用于在 Windows 系统下拼接国旗图片 URL (/flags/<code>.png)
  */
 export const coloCountryMap: { [key: string]: string } = {
     'SJC': 'us', 'LAX': 'us', 'SEA': 'us', 'SFO': 'us', 'DFW': 'us',
@@ -132,11 +133,11 @@ export const getColoCountry = (colo: string): string | null => {
 };
 
 /**
- * 获取指定 colo 对应的国旗图片 URL (ipdata.co 公开 CDN)
+ * 获取指定 colo 对应的国旗图片 URL (本地静态资源)
  */
 export const getFlagUrl = (colo: string): string | null => {
     const country = getColoCountry(colo);
-    return country ? `https://ipdata.co/flags/${country}.png` : null;
+    return country ? `/flags/${country}.png` : null;
 };
 
 /**

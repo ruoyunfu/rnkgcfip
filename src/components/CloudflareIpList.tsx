@@ -12,19 +12,32 @@ export function CloudflareIpList({ onDataLoaded }: CloudflareIpListProps) {
     const [loading, setLoading] = useState(false);
     const { showToast } = useToast();
 
-    const loadData = async () => {
+    const loadData = async (retryCount = 3) => {
         setLoading(true);
-        try {
-            const cfData = await getCloudflareIps();
-            setCfIps(cfData);
-            if (cfData) {
-                onDataLoaded(cfData);
+        for (let attempt = 1; attempt <= retryCount; attempt++) {
+            try {
+                const cfData = await getCloudflareIps();
+                setCfIps(cfData);
+                if (cfData) {
+                    onDataLoaded(cfData);
+                }
+                setLoading(false);
+                return; // 成功则直接返回
+            } catch (err) {
+                console.error(`Failed to fetch Cloudflare IPs (attempt ${attempt}/${retryCount})`, err);
+                if (attempt < retryCount) {
+                    // 指数退避：1s, 2s, 3s
+                    const delay = attempt * 1000;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                } else {
+                    // 最后一次也失败，才提示用户
+                    showToast('获取Cloudflare IP段失败，可点击"同步最新IP段"手动重试', 'error');
+                }
+            } finally {
+                if (attempt === retryCount) {
+                    setLoading(false);
+                }
             }
-        } catch (err) {
-            console.error('Failed to fetch Cloudflare IPs', err);
-            showToast('获取Cloudflare IP段失败', 'error');
-        } finally {
-            setLoading(false);
         }
     };
 
@@ -58,7 +71,7 @@ export function CloudflareIpList({ onDataLoaded }: CloudflareIpListProps) {
                     title="从上游同步最新的IP段"
                 >
                     <RotateCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-                    <span>{loading ? '同步中...' : '同步IP段'}</span>
+                    <span>{loading ? '同步中...' : '同步最新IP段'}</span>
                 </button>
             </div>
             

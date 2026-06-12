@@ -21,32 +21,45 @@ export interface ThirdPartyData {
  * 解析 JSON 响应，自动处理 HTTP 错误状态码
  */
 const handleResponse = async <T>(response: Response): Promise<T> => {
-    const text = await response.text();
-
     if (!response.ok) {
         let errorMessage = `请求失败: ${response.status} ${response.statusText}`;
-        
-        // 统一处理 401 未授权
+
+        // 统一处理 401 未授权 — 此时 token 已经不可用，清理登录态
         if (response.status === 401) {
+            const hadAuth = localStorage.getItem('auth_token') === 'true';
+            if (hadAuth) {
+                localStorage.removeItem('auth_token');
+                localStorage.removeItem('JWT_SECRET');
+                localStorage.removeItem('APITOKEN');
+                sessionStorage.setItem('auth_expired', 'true');
+                window.dispatchEvent(new CustomEvent('auth:expired'));
+            }
             throw new Error('登录已过期或无效，请重新登录');
         }
 
         try {
-            const json = JSON.parse(text);
+            const json: Record<string, unknown> = await response.json();
             if (json && json.message) {
-                errorMessage = json.message;
+                errorMessage = String(json.message);
             }
         } catch {
-            if (text) errorMessage = text;
+            // 非 JSON 响应，回退到状态文本
         }
         throw new Error(errorMessage);
     }
 
-    return text ? JSON.parse(text) : null as any;
+    // 204 No Content 或空响应
+    const contentType = response.headers.get('content-type');
+    if (response.status === 204 || !contentType || !contentType.includes('application/json')) {
+        return null as any;
+    }
+
+    return response.json() as Promise<T>;
 }
 
 /**
  * 一个包装了 fetch 的函数，自动添加 Authorization header
+ * 401 自愈逻辑统一在 handleResponse 中处理
  */
 const authedFetch = async (url: RequestInfo | URL, options: RequestInit = {}): Promise<Response> => {
     const token = localStorage.getItem('JWT_SECRET');
