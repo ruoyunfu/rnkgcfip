@@ -72,7 +72,7 @@
 
 ---
 # 私人优选IP管理展示
-<img width="1883" height="5002" alt="PixPin_2026-06-12_22-35-21" src="https://github.com/user-attachments/assets/73d3ec81-f1ea-4e05-9de8-bf3aa9f46e7f" />
+<img width="1908" height="4968" alt="PixPin_2026-06-12_22-40-59" src="https://github.com/user-attachments/assets/b2c1e55a-2c38-49c9-af7f-6a31638a5fcf" />
 
 
 &copy; 本系统仅用于个人学习和研究目的，禁止用于任何商业用途。请勿将优选IP用于任何违反Cloudflare服务条款和违反法律法规的活动。 ⚖️
